@@ -5,13 +5,13 @@ Deterministic, append-only Markdown documents with a small, explicit Python API.
 ## Installation
 
 ```bash
-uv add simple-document
+uv add simdoc
 ```
 
 Or with pip:
 
 ```bash
-pip install simple-document
+pip install simdoc
 ```
 
 ## Usage
