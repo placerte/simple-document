@@ -1,6 +1,6 @@
 [project]
-name = "simple-document"
-version = "0.1.0"
+name = "simdoc"
+version = "0.1.1"
 description = "A simple Python package for deterministic Markdown documents"
 readme = "README.md"
 requires-python = ">=3.13"
