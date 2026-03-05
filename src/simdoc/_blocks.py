@@ -39,4 +39,10 @@ class Hr:
     pass
 
 
-Block = Heading | Paragraph | ListBlock | CodeBlock | TableBlock | Hr
+@dataclass(frozen=True)
+class TocBlock:
+    title: str | None
+    levels: tuple[int, int]
+
+
+Block = Heading | Paragraph | ListBlock | CodeBlock | TableBlock | Hr | TocBlock

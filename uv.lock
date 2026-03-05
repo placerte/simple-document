@@ -154,8 +154,8 @@ wheels = [
 ]
 
 [[package]]
-name = "simple-document"
-version = "0.1.0"
+name = "simdoc"
+version = "0.1.1"
 source = { editable = "." }
 
 [package.dev-dependencies]

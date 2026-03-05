@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+import re
 from typing import Sequence
 
-from .._blocks import CodeBlock, Heading, Hr, ListBlock, Paragraph, TableBlock
+from .._blocks import CodeBlock, Heading, Hr, ListBlock, Paragraph, TableBlock, TocBlock
 from .._errors import SimDocError
 from .._text import format_table_cell, normalize_newlines, select_code_fence
 
 
 def render_markdown(blocks: Sequence[object]) -> str:
+    headings = _scan_headings(blocks)
     parts: list[str] = []
     for block in blocks:
-        parts.append(_render_block(block))
+        parts.append(_render_block(block, headings))
     if not parts:
         return "\n"
     return "\n\n".join(parts) + "\n"
 
 
-def _render_block(block: object) -> str:
+def _render_block(block: object, headings: Sequence[HeadingEntry]) -> str:
     if isinstance(block, Heading):
         return _render_heading(block)
     if isinstance(block, Paragraph):
@@ -29,12 +31,47 @@ def _render_block(block: object) -> str:
         return _render_table(block)
     if isinstance(block, Hr):
         return "---"
+    if isinstance(block, TocBlock):
+        return _render_toc(block, headings)
     raise SimDocError(f"unknown block type: {type(block)!r}")
+
+
+HeadingEntry = tuple[int, str, str]
+
+
+def _scan_headings(blocks: Sequence[object]) -> list[HeadingEntry]:
+    entries: list[HeadingEntry] = []
+    used: dict[str, int] = {}
+    for block in blocks:
+        if isinstance(block, Heading):
+            slug = slugify(block.text, used)
+            entries.append((block.level, block.text, slug))
+    return entries
 
 
 def _render_heading(block: Heading) -> str:
     prefix = "#" * block.level
     return f"{prefix} {block.text}"
+
+
+def _render_toc(block: TocBlock, headings: Sequence[HeadingEntry]) -> str:
+    min_level, max_level = block.levels
+    toc_lines: list[str] = []
+    for level, text, slug in headings:
+        if level < min_level or level > max_level:
+            continue
+        indent = "  " * (level - min_level)
+        toc_lines.append(f"{indent}- [{text}](#{slug})")
+
+    heading_text = ""
+    if block.title is not None:
+        heading_text = f"## {block.title}"
+
+    if heading_text and toc_lines:
+        return f"{heading_text}\n\n" + "\n".join(toc_lines)
+    if heading_text:
+        return heading_text
+    return "\n".join(toc_lines)
 
 
 def _render_list(block: ListBlock) -> str:
@@ -128,3 +165,21 @@ def _format_alignment_row(align: Sequence[str]) -> str:
         else:
             raise SimDocError(f"invalid alignment value: {value!r}")
     return f"| {' | '.join(markers)} |"
+
+
+def slugify(text: str, used: dict[str, int] | None = None) -> str:
+    value = text.lower()
+    value = re.sub(r"\s+", "-", value)
+    value = re.sub(r"[^a-z0-9-]", "", value)
+    value = re.sub(r"-+", "-", value).strip("-")
+    if value == "":
+        value = "section"
+
+    if used is None:
+        return value
+
+    count = used.get(value, 0)
+    used[value] = count + 1
+    if count == 0:
+        return value
+    return f"{value}-{count}"

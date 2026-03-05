@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from os import PathLike
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 from typing import Any
 
-from ._blocks import CodeBlock, Heading, Hr, ListBlock, Paragraph, TableBlock
+from ._blocks import CodeBlock, Heading, Hr, ListBlock, Paragraph, TableBlock, TocBlock
 from ._errors import SimDocError
 from ._io import save_markdown
 from ._render.markdown import render_markdown
@@ -16,7 +20,7 @@ class Doc:
 
     def __init__(self) -> None:
         self._blocks: list[
-            Heading | Paragraph | ListBlock | CodeBlock | TableBlock | Hr
+            Heading | Paragraph | ListBlock | CodeBlock | TableBlock | Hr | TocBlock
         ] = []
 
     def __len__(self) -> int:
@@ -129,9 +133,71 @@ class Doc:
     def hr(self) -> None:
         self._blocks.append(Hr())
 
+    def toc(
+        self,
+        title: str | None = "Contents",
+        levels: tuple[int, int] = (2, 4),
+    ) -> None:
+        if levels is None:
+            raise SimDocError("toc levels must be a (min, max) tuple")
+        try:
+            min_level, max_level = levels
+        except (TypeError, ValueError):
+            raise SimDocError("toc levels must be a (min, max) tuple") from None
+        try:
+            valid_range = 1 <= min_level <= max_level <= 6
+        except TypeError:
+            raise SimDocError("toc levels must be within 1..6") from None
+        if not valid_range:
+            raise SimDocError("toc levels must be within 1..6")
+        self._blocks.append(TocBlock(title=title, levels=(min_level, max_level)))
+
     def to_markdown(self) -> str:
         return render_markdown(self._blocks)
 
     def save(self, path: str | PathLike[str]) -> Any:
         text = self.to_markdown()
         return save_markdown(text, path)
+
+    def save_pdf(
+        self,
+        path: str | PathLike[str],
+        *,
+        preset: str | None = "default",
+        pandoc_args: list[str] | None = None,
+    ) -> Path:
+        if shutil.which("pandoc") is None:
+            raise SimDocError(
+                "pandoc executable not found.\n"
+                "Install pandoc: https://pandoc.org/installing.html"
+            )
+
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown = self.to_markdown()
+
+        args = ["pandoc"]
+        preset_args = _resolve_preset_args(preset)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir) / "simdoc_temp.md"
+            temp_path.write_text(markdown, encoding="utf-8", newline="\n")
+            args.extend([str(temp_path), "-o", str(output_path)])
+            args.extend(preset_args)
+            if pandoc_args:
+                args.extend(pandoc_args)
+            subprocess.run(args, check=True)
+
+        return output_path
+
+
+def _resolve_preset_args(preset: str | None) -> list[str]:
+    presets: dict[str, list[str]] = {
+        "default": [],
+        "article": ["--pdf-engine=xelatex"],
+    }
+    if preset is None:
+        return []
+    if preset not in presets:
+        raise SimDocError(f"unknown pdf preset: {preset!r}")
+    return list(presets[preset])
