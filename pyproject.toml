@@ -1,6 +1,6 @@
 [project]
 name = "simdoc"
-version = "0.1.1"
+version = "0.2.0"
 description = "A simple Python package for deterministic Markdown documents"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -11,6 +11,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/simdoc"]
+include = ["src/simdoc/templates/*.latex"]
 
 [tool.pyright]
 extraPaths = ["src"]

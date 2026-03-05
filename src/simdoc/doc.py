@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from importlib import resources
 from os import PathLike
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import warnings
 from typing import Any
 
 from ._blocks import CodeBlock, Heading, Hr, ListBlock, Paragraph, TableBlock, TocBlock
@@ -166,38 +168,92 @@ class Doc:
         preset: str | None = "default",
         pandoc_args: list[str] | None = None,
     ) -> Path:
-        if shutil.which("pandoc") is None:
+        if shutil.which("pandoc") is None or shutil.which("xelatex") is None:
             raise SimDocError(
-                "pandoc executable not found.\n"
-                "Install pandoc: https://pandoc.org/installing.html"
+                "PDF rendering requires pandoc and a TeX distribution (xelatex).\n"
+                "See README: PDF Toolchain Setup."
             )
 
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         markdown = self.to_markdown()
 
-        args = ["pandoc"]
-        preset_args = _resolve_preset_args(preset)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             temp_path = Path(tmpdir) / "simdoc_temp.md"
             temp_path.write_text(markdown, encoding="utf-8", newline="\n")
-            args.extend([str(temp_path), "-o", str(output_path)])
+            preset_args = _resolve_preset_args(preset)
+            args = ["pandoc", str(temp_path), "-o", str(output_path)]
             args.extend(preset_args)
             if pandoc_args:
                 args.extend(pandoc_args)
-            subprocess.run(args, check=True)
+            try:
+                subprocess.run(args, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as exc:
+                if _should_fallback_to_plain(preset):
+                    warnings.warn(
+                        "Eisvogel template failed; falling back to Pandoc default template.",
+                        RuntimeWarning,
+                    )
+                    fallback_args = ["pandoc", str(temp_path), "-o", str(output_path)]
+                    fallback_args.append("--pdf-engine=xelatex")
+                    if pandoc_args:
+                        fallback_args.extend(pandoc_args)
+                    try:
+                        subprocess.run(
+                            fallback_args, check=True, capture_output=True, text=True
+                        )
+                    except subprocess.CalledProcessError as fallback_exc:
+                        raise SimDocError(
+                            _format_pandoc_error(fallback_exc.stderr)
+                        ) from None
+                else:
+                    raise SimDocError(_format_pandoc_error(exc.stderr)) from None
 
         return output_path
 
 
 def _resolve_preset_args(preset: str | None) -> list[str]:
-    presets: dict[str, list[str]] = {
-        "default": [],
-        "article": ["--pdf-engine=xelatex"],
-    }
+    if preset == "default":
+        preset = "eisvogel"
     if preset is None:
         return []
-    if preset not in presets:
-        raise SimDocError(f"unknown pdf preset: {preset!r}")
-    return list(presets[preset])
+
+    if preset == "eisvogel":
+        return [
+            "--template",
+            _get_eisvogel_template(),
+            "--pdf-engine=xelatex",
+            "--listings",
+        ]
+
+    if preset == "article":
+        return ["--pdf-engine=xelatex"]
+
+    raise SimDocError(f"unknown pdf preset: {preset!r}")
+
+
+def _get_eisvogel_template() -> str:
+    path = resources.files("simdoc.templates") / "eisvogel.latex"
+    return str(path)
+
+
+def _should_fallback_to_plain(preset: str | None) -> bool:
+    return preset in {"default", "eisvogel"}
+
+
+def _format_pandoc_error(stderr: str | None) -> str:
+    output = (stderr or "").strip()
+    if output == "":
+        output = "<no stderr output>"
+    return (
+        "PDF rendering failed.\n\n"
+        "Ensure the following are installed:\n\n"
+        "Linux:\n"
+        "  sudo apt install texlive-xetex texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra\n\n"
+        "Windows:\n"
+        "  Install MiKTeX and enable automatic package installation.\n\n"
+        "macOS:\n"
+        "  Install MacTeX.\n\n"
+        "Original pandoc error output:\n"
+        f"{output}"
+    )

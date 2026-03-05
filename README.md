@@ -34,6 +34,10 @@ markdown = doc.to_markdown()
 doc.save("example.md")
 ```
 
+## API Reference
+
+See the full API and integration notes in `docs/api.md`.
+
 ## Example script
 
 Run the full example that exercises every block type:
@@ -43,3 +47,31 @@ uv run python examples/example_all_blocks.py
 ```
 
 The script writes `examples/example_output.md`.
+
+## PDF Rendering
+
+simdoc uses Pandoc + XeLaTeX with the Eisvogel LaTeX template.
+
+### PDF Toolchain Setup
+
+System requirements:
+
+- pandoc
+- a TeX distribution with xelatex
+
+Recommended installations:
+
+Linux:
+  sudo apt install pandoc texlive-xetex texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra
+
+Windows:
+  Install Pandoc + MiKTeX (enable automatic package installation)
+
+macOS:
+  brew install pandoc
+  brew install --cask mactex
+
+Template project:
+https://github.com/Wandmalfarbe/pandoc-latex-template
+
+Thanks to Pascal Wagler and contributors for the template.
